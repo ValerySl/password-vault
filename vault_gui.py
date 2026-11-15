@@ -1,6 +1,6 @@
 """Оконный интерфейс хранилища паролей. Шифрование — в vault.py, здесь только экран.
 
-Запуск:  python vault_gui.py [путь_к_файлу]     (или двойной щелчок по «Хранилище.bat»)
+Запуск:  python vault_gui.py [путь_к_файлу]     (или двойной щелчок по PasswordVault.vbs)
 """
 
 import os
@@ -80,9 +80,7 @@ class App(ctk.CTk):
         self.minsize(880, 580)
 
         self.device = core.Device()
-        default = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vault.dat")
-        remembered = self.device.last_path()
-        self.path = path or (remembered if remembered and os.path.exists(remembered) else default)
+        self.path = path or core.default_vault_path(self.device)
 
         saved = self.device.get_setting("auto_lock_seconds", AUTO_LOCK_DEFAULT)
         self.auto_lock_seconds = saved if saved in AUTO_LOCK_CHOICES.values() else AUTO_LOCK_DEFAULT
@@ -190,7 +188,7 @@ class App(ctk.CTk):
 
     def _choose_new(self):
         chosen = filedialog.asksaveasfilename(title="Где создать хранилище", defaultextension=".dat",
-                                              initialfile="vault.dat", confirmoverwrite=False,
+                                              initialfile=core.random_vault_name(), confirmoverwrite=False,
                                               filetypes=[("Хранилище", "*.dat")])
         if chosen:
             self.path = os.path.normpath(chosen)

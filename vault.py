@@ -1,6 +1,8 @@
 """Хранилище паролей в одном зашифрованном файле. Два секрета: ключ на бумаге + код.
 
 Запуск:  python vault.py [путь_к_файлу]
+         Без пути: последний открытый файл, иначе файл хранилища рядом с программой
+         (ищется по метке, имя любое), иначе создаётся новый со случайным именем.
 
 Как устроена защита
 -------------------
@@ -172,6 +174,46 @@ class Vault:
         self._header = HEADER.pack(MAGIC, MEMORY_KIB, ITERATIONS, LANES, salt, vault_id)
         self._key = derive_key(self.secret_key, new_code, salt, MEMORY_KIB, ITERATIONS, LANES)
         self.save()
+
+
+def program_dir() -> str:
+    """Папка программы: рядом со скриптом или, в собранном .exe, рядом с ним."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def random_vault_name() -> str:
+    """Имя нового файла хранилища — случайное, ничего не говорящее о содержимом."""
+    return secrets.token_hex(8) + ".dat"
+
+
+def find_vault(folder: str) -> str | None:
+    """Ищет файл хранилища по метке в начале файла: имя может быть любым."""
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return None
+    for name in names:
+        path = os.path.join(folder, name)
+        if name.endswith(".tmp") or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                if f.read(len(MAGIC)) == MAGIC:
+                    return path
+        except OSError:
+            continue
+    return None
+
+
+def default_vault_path(device: "Device") -> str:
+    """Последний открытый файл, иначе найденный рядом с программой, иначе новое случайное имя."""
+    remembered = device.last_path()
+    if remembered and os.path.exists(remembered):
+        return remembered
+    folder = program_dir()
+    return find_vault(folder) or os.path.join(folder, random_vault_name())
 
 
 def subtitle(entry: dict) -> str:
@@ -393,8 +435,7 @@ def add_entry(vault: Vault) -> None:
 
 def main() -> None:
     device = Device()
-    default_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vault.dat")
-    path = sys.argv[1] if len(sys.argv) > 1 else (device.last_path() or default_path)
+    path = sys.argv[1] if len(sys.argv) > 1 else default_vault_path(device)
 
     try:
         vault = open_vault(path, device) if os.path.exists(path) else create_vault(path, device)

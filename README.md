@@ -10,7 +10,7 @@ The interface is in Russian.
 
 ## Features
 
-- **One encrypted file.** All entries are stored in `vault.dat`. Without the secrets nothing in it is readable, not even the number or names of entries.
+- **One encrypted file with a random name.** All entries are stored in one file named like `3f9a1c7e5b20d84e.dat`. Without the secrets nothing in it is readable, not even the number or names of entries.
 - **Two secrets, needed together.** A random 160-bit secret key (written on paper) plus a code of 6+ letters and digits. Both feed into the same key derivation, so neither works alone.
 - **Code-only unlock on a known device.** The secret key is entered once per device, then remembered under Windows DPAPI, tied to your Windows account.
 - **Password entries.** Login, password, note, and a built-in generator (20 random characters).
@@ -51,9 +51,9 @@ Argon2 parameters are stored in the header, so they can be raised later without 
 
 | Attacker has | What is left to guess | Rough estimate |
 |---|---|---|
-| Only `vault.dat` | The 160-bit secret key | Not feasible |
-| `vault.dat` + secret key | The code | A random 6-character code is ~57 billion options at ~1 s and 1 GiB per guess: centuries on one PC, months on a large rig |
-| `vault.dat` + secret key + code | Nothing | Opens immediately |
+| Only the vault file | The 160-bit secret key | Not feasible |
+| Vault file + secret key | The code | A random 6-character code is ~57 billion options at ~1 s and 1 GiB per guess: centuries on one PC, months on a large rig |
+| Vault file + secret key + code | Nothing | Opens immediately |
 
 The middle row only holds for a **random** code. A word with digits, a date or a name falls to a dictionary attack in hours.
 
@@ -75,7 +75,7 @@ Start the GUI:
 python vault_gui.py
 ```
 
-Or double-click `Хранилище.vbs` to start it without a console window.
+Or double-click `PasswordVault.vbs` to start it without a console window.
 
 A console version is also included: `python vault.py`.
 
@@ -85,7 +85,9 @@ A console version is also included: `python vault.py`.
 2. The app shows the **secret key** once: 32 characters in 8 groups, read the first line left to right, then the second.
 3. Write it down on paper and type it back to confirm. You can't continue until it matches.
 
-The vault is created as `vault.dat` next to the program.
+The vault is created next to the program under a random name such as `3f9a1c7e5b20d84e.dat`, so the name says nothing about what is inside.
+
+On start the app opens the last vault it used. If it has none, it looks next to the program for a vault file by the marker at the start of the file, so you can rename the file to anything you like. If nothing is found, it offers to create a new one. Use "Открыть другой файл" (Open another file) on the unlock screen to pick a vault elsewhere.
 
 ### Everyday use
 
@@ -93,16 +95,16 @@ Enter the code. That's it.
 
 ### New device or reinstalled Windows
 
-You need the program, a copy of `vault.dat`, the secret key from paper and the code. After one successful unlock the device remembers the key.
+You need the program, a copy of the vault file, the secret key from paper and the code. After one successful unlock the device remembers the key.
 
 ## Files
 
 | File | Where | What it is |
 |---|---|---|
-| `vault.dat` | Next to the program, or wherever you chose | The encrypted vault. **Back this up.** Safe to keep on a USB stick or in the cloud |
+| `<random>.dat` | Next to the program, or wherever you chose | The encrypted vault. **Back this up.** Safe to keep on a USB stick or in the cloud |
 | `device.json` | `%APPDATA%\PasswordVault` | Secret key under DPAPI, last opened path, settings. Useless on another computer |
 
-Never open `vault.dat` in a text editor and save it: the file will be rejected as corrupted.
+Never open the vault file in a text editor and save it: the file will be rejected as corrupted.
 
 ## Limitations and warnings
 
@@ -110,7 +112,8 @@ This is not Enigma. Which is good news, since Enigma got broken. Still, be reali
 
 - **Not audited.** Written as a personal project and never reviewed by a security professional. It uses well-established primitives from the `cryptography` library, but the code around them may have mistakes.
 - **No recovery.** Lose the secret key and the device that remembers it, or forget the code, and the data is gone. There is no backdoor and no reset.
-- **No backups built in.** If `vault.dat` gets deleted or corrupted, only your own copy will save you.
+- **No backups built in.** If the vault file gets deleted or corrupted, only your own copy will save you.
+- **The random name is camouflage, not protection.** It hides the purpose of the file from a casual look. The file still starts with a fixed 4-byte marker (`PWV2`), so anyone who knows this project can recognize it. Security comes from the encryption, not from the name.
 - **Malware wins.** A keylogger sees your code as you type it. Anything running under your Windows account can read the remembered secret key and, while the vault is unlocked, its contents in memory. No password manager protects a compromised computer.
 - **Secrets in memory are not wiped.** Python can't reliably zero strings, so decrypted data may stay in RAM until it is overwritten.
 - **The clipboard is shared.** Other programs and clipboard history (Win+V) can see what you copy. Prefer reading seed phrases from the screen over copying them.
