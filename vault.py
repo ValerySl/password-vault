@@ -27,11 +27,13 @@ import getpass
 import json
 import os
 import secrets
+import shutil
 import string
 import struct
 import subprocess
 import sys
 import threading
+import time
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -47,6 +49,9 @@ SECRET_KEY_LEN = 20  # байт = 160 бит = 32 символа base32
 MEMORY_KIB = 1024 * 1024  # 1 ГБ
 ITERATIONS = 4
 LANES = 4
+
+BACKUP_DIR = "backups"
+BACKUP_KEEP = 20  # сколько последних версий хранить
 
 MIN_CODE_LEN = 6
 CLIPBOARD_SECONDS = 20
@@ -156,7 +161,66 @@ class Vault:
             raise WrongSecretOrCorrupted("неверный код или секретный ключ (или файл повреждён)") from None
         return cls(path, secret_key, key, header, json.loads(plaintext.decode("utf-8")))
 
-    def save(self) -> None:
+    # ---- резервные копии: папка backups рядом с файлом хранилища
+
+    @property
+    def backup_dir(self) -> str:
+        return os.path.join(os.path.dirname(os.path.abspath(self.path)), BACKUP_DIR)
+
+    def list_backups(self) -> list[str]:
+        """Копии этого хранилища, сначала самые новые."""
+        stem = os.path.splitext(os.path.basename(self.path))[0]
+        try:
+            names = os.listdir(self.backup_dir)
+        except OSError:
+            return []
+        own = [n for n in names if n.startswith(stem + "-") and n.endswith(".dat")]
+        return [os.path.join(self.backup_dir, n) for n in sorted(own, reverse=True)]
+
+    def _make_backup(self) -> None:
+        """Копирует текущую версию файла перед перезаписью. Имя — время той версии."""
+        if not os.path.exists(self.path):
+            return
+        try:
+            os.makedirs(self.backup_dir, exist_ok=True)
+            stem = os.path.splitext(os.path.basename(self.path))[0]
+            mtime = os.path.getmtime(self.path)
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(mtime)) + f"-{int(mtime * 1000) % 1000:03d}"
+            dest = os.path.join(self.backup_dir, f"{stem}-{stamp}.dat")
+            n = 1
+            while os.path.exists(dest):
+                dest = os.path.join(self.backup_dir, f"{stem}-{stamp}{n:02d}.dat")
+                n += 1
+            shutil.copy2(self.path, dest)
+            for old in self.list_backups()[BACKUP_KEEP:]:
+                os.remove(old)
+        except OSError:
+            pass  # копия не получилась — это не повод не сохранить основной файл
+
+    def purge_backups(self) -> None:
+        for path in self.list_backups():
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def read_backup(self, path: str) -> dict:
+        """Записи из резервной копии. Открывается текущим ключом, повторно код не нужен."""
+        with open(path, "rb") as f:
+            blob = f.read()
+        header = blob[: HEADER.size]
+        if header != self._header:
+            raise WrongSecretOrCorrupted("копия сделана до смены кода или от другого хранилища")
+        nonce = blob[HEADER.size : HEADER.size + NONCE_LEN]
+        try:
+            plaintext = AESGCM(self._key).decrypt(nonce, blob[HEADER.size + NONCE_LEN :], header)
+        except InvalidTag:
+            raise WrongSecretOrCorrupted("копия повреждена") from None
+        return json.loads(plaintext.decode("utf-8"))
+
+    def save(self, backup: bool = True) -> None:
+        if backup:
+            self._make_backup()
         nonce = secrets.token_bytes(NONCE_LEN)  # новый nonce при каждом сохранении
         plaintext = json.dumps(self.entries, ensure_ascii=False).encode("utf-8")
         blob = self._header + nonce + AESGCM(self._key).encrypt(nonce, plaintext, self._header)
@@ -173,7 +237,10 @@ class Vault:
         salt = secrets.token_bytes(16)
         self._header = HEADER.pack(MAGIC, MEMORY_KIB, ITERATIONS, LANES, salt, vault_id)
         self._key = derive_key(self.secret_key, new_code, salt, MEMORY_KIB, ITERATIONS, LANES)
-        self.save()
+        self.save(backup=False)
+        # Старые копии открываются старым кодом. Если код меняют из-за утечки,
+        # они не должны остаться лазейкой — удаляем.
+        self.purge_backups()
 
 
 def program_dir() -> str:

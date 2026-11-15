@@ -20,6 +20,7 @@ The interface is in Russian.
 - **Clipboard cleared** 20 seconds after copying.
 - **Hidden from screenshots**, screen recording and screen sharing.
 - **Delete confirmation** by typing four random digits.
+- **Automatic backups.** Every save keeps the previous version in a `backups` folder next to the vault (last 20), restorable from the settings in one click.
 
 ## How the encryption works
 
@@ -102,9 +103,20 @@ You need the program, a copy of the vault file, the secret key from paper and th
 | File | Where | What it is |
 |---|---|---|
 | `<random>.dat` | Next to the program, or wherever you chose | The encrypted vault. **Back this up.** Safe to keep on a USB stick or in the cloud |
+| `backups\<name>-<date>-<time>.dat` | `backups` folder next to the vault | Previous versions of the vault, encrypted the same way. The last 20 are kept |
 | `device.json` | `%APPDATA%\PasswordVault` | Secret key under DPAPI, last opened path, settings. Useless on another computer |
 
 Never open the vault file in a text editor and save it: the file will be rejected as corrupted.
+
+## Backups
+
+Before every save the current file is copied to `backups`. The backup name holds the time of that version.
+
+- **Undo a change.** Settings → Резервные копии (Backups) → Восстановить (Restore). The current version is backed up first, so a restore can be undone too.
+- **Main file corrupted or deleted.** Each backup is a complete vault and opens with the same secret key and code. Replace the broken file with the newest backup (copy it next to the program, any name works).
+- **Changing the code deletes old backups.** They open with the old code, and if you change it because it leaked, they must not stay behind as a way in.
+
+Backups sit on the same disk as the vault. They protect against a broken file or a bad edit, not against a dead disk or a lost laptop: keep your own copy elsewhere too.
 
 ## Limitations and warnings
 
@@ -112,7 +124,7 @@ This is not Enigma. Which is good news, since Enigma got broken. Still, be reali
 
 - **Not audited.** Written as a personal project and never reviewed by a security professional. It uses well-established primitives from the `cryptography` library, but the code around them may have mistakes.
 - **No recovery.** Lose the secret key and the device that remembers it, or forget the code, and the data is gone. There is no backdoor and no reset.
-- **No backups built in.** If the vault file gets deleted or corrupted, only your own copy will save you.
+- **Built-in backups are local.** They live next to the vault on the same disk. A dead drive, theft or ransomware takes them along with the vault, so keep an off-device copy.
 - **The random name is camouflage, not protection.** It hides the purpose of the file from a casual look. The file still starts with a fixed 4-byte marker (`PWV2`), so anyone who knows this project can recognize it. Security comes from the encryption, not from the name.
 - **Malware wins.** A keylogger sees your code as you type it. Anything running under your Windows account can read the remembered secret key and, while the vault is unlocked, its contents in memory. No password manager protects a compromised computer.
 - **Secrets in memory are not wiped.** Python can't reliably zero strings, so decrypted data may stay in RAM until it is overwritten.

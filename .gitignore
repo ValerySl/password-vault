@@ -2,6 +2,7 @@
 *.dat
 *.dat.tmp
 device.json
+backups/
 
 # Python
 __pycache__/

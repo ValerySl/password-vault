@@ -742,7 +742,8 @@ class App(ctk.CTk):
                     btn.configure(state="normal", text="Сменить")
                     c1.delete(0, "end")
                     c2.delete(0, "end")
-                    msg.configure(text="Код изменён, файл перешифрован", text_color=GOOD)
+                    msg.configure(text="Код изменён, файл перешифрован. Старые резервные копии удалены: "
+                                       "они открывались старым кодом", text_color=GOOD)
 
             def fail(e):
                 if btn.winfo_exists():
@@ -810,6 +811,66 @@ class App(ctk.CTk):
             row=1, column=0, sticky="w", padx=18, pady=(4, 2))
         label(b, "Файл зашифрован — его копию можно держать на флешке или в облаке.", 12, MUTED,
               anchor="w", justify="left", wraplength=520).grid(row=2, column=0, sticky="w", padx=18, pady=(0, 14))
+
+        self._backups_block(pane)
+
+    def _backups_block(self, pane):
+        b = self._block(pane, "Резервные копии")
+        label(b, f"При каждом сохранении предыдущая версия файла копируется в папку «{core.BACKUP_DIR}» "
+                 f"рядом с хранилищем. Хранятся последние {core.BACKUP_KEEP}. Копии зашифрованы так же.",
+              13, MUTED, anchor="w", justify="left", wraplength=520).grid(
+            row=1, column=0, sticky="w", padx=18, pady=(4, 8))
+
+        backups = self.vault.list_backups()
+        rows = ctk.CTkFrame(b, fg_color="transparent")
+        rows.grid(row=2, column=0, sticky="ew", padx=18)
+        rows.grid_columnconfigure(0, weight=1)
+        if not backups:
+            label(rows, "Пока копий нет — они появятся после первого изменения.", 13, anchor="w").grid(
+                row=0, column=0, sticky="w", pady=(0, 4))
+        for i, path in enumerate(backups):
+            when = self._backup_time(path)
+            try:
+                entries = self.vault.read_backup(path)
+                info, ok = f"{when}   ·   записей: {len(entries)}", True
+            except (OSError, ValueError, core.WrongSecretOrCorrupted) as e:
+                info, ok = f"{when}   ·   {e}", False
+            label(rows, info, 13, TEXT if ok else DANGER, anchor="w").grid(row=i, column=0, sticky="w", pady=3)
+            if ok:
+                ghost(rows, "Восстановить", lambda p=path, w=when: self._restore_backup(p, w), width=120,
+                      height=30).grid(row=i, column=1, pady=3)
+
+        def open_folder():
+            os.makedirs(self.vault.backup_dir, exist_ok=True)
+            os.startfile(self.vault.backup_dir)
+
+        ghost(b, "Открыть папку", open_folder, width=150).grid(row=3, column=0, sticky="w", padx=18, pady=(10, 16))
+
+    @staticmethod
+    def _backup_time(path):
+        """Время версии из имени копии: <имя>-ГГГГММДД-ЧЧММСС-мс.dat."""
+        parts = os.path.basename(path)[:-4].split("-")
+        try:
+            d, t = parts[-3], parts[-2]
+            return f"{d[6:8]}.{d[4:6]}.{d[:4]}  {t[:2]}:{t[2:4]}:{t[4:6]}"
+        except IndexError:
+            return os.path.basename(path)
+
+    def _restore_backup(self, path, when):
+        if not messagebox.askyesno(
+                "Восстановить копию",
+                f"Записи будут заменены версией от {when}.\n\n"
+                "Текущая версия сама сохранится как резервная копия, так что восстановление можно отменить."):
+            return
+        try:
+            entries = self.vault.read_backup(path)
+        except (OSError, ValueError, core.WrongSecretOrCorrupted) as e:
+            self.toast(f"Не удалось: {e}", DANGER)
+            return
+        self.vault.entries = entries
+        self.vault.save()
+        self.show_settings()
+        self.toast(f"Восстановлена версия от {when}")
 
 
 def main():
