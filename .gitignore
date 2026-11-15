@@ -1,0 +1,13 @@
+# Хранилище и всё, что рядом с ним, в репозиторий не попадает
+*.dat
+*.dat.tmp
+device.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Сборка в .exe
+build/
+dist/
+*.spec
